@@ -1,7 +1,7 @@
 # builder for Emacs packages built for packages.el
 # using MELPA package-build.el
 
-{ lib, stdenv, fetchFromGitHub, emacs, texinfo }:
+{ lib, stdenv, fetchFromGitHub, emacs, texinfo, writeText }:
 
 with lib;
 
@@ -28,7 +28,7 @@ let
 
 in
 
-import ./generic.nix { inherit lib stdenv emacs texinfo; } ({
+import ./generic.nix { inherit lib stdenv emacs texinfo writeText; } ({
 
   ename =
     if ename == null
@@ -67,6 +67,7 @@ import ./generic.nix { inherit lib stdenv emacs texinfo; } ({
     cd "$NIX_BUILD_TOP"
 
     emacs --batch -Q \
+        --eval "(setq comp-enable-subr-trampolines nil)" \
         -L "$NIX_BUILD_TOP/package-build" \
         -l "$melpa2nix" \
         -f melpa2nix-build-package \
@@ -84,6 +85,7 @@ import ./generic.nix { inherit lib stdenv emacs texinfo; } ({
     fi
 
     emacs --batch -Q \
+        --eval "(setq comp-enable-subr-trampolines nil)" \
         -l "$elpa2nix" \
         -f elpa2nix-install-package \
         "$archive" "$out/share/emacs/site-lisp/elpa"
