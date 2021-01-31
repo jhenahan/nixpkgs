@@ -1,0 +1,166 @@
+From e9bfb2cbf5f0121cc74e785e067b2b9d12f7e952 Mon Sep 17 00:00:00 2001
+From: Mauricio Collares <mauricio@collares.org>
+Date: Mon, 28 Dec 2020 01:12:44 -0300
+Subject: [PATCH] emacs: add currently compiling package dirs to load-path
+
+Co-authored-by: Tad Fisher <tadfisher@gmail.com>
+---
+ .../editors/emacs-modes/elpa-packages.nix     |  4 +--
+ pkgs/build-support/emacs/elpa.nix             |  4 +--
+ .../emacs/{setup-hook.sh => emacs-funcs.sh}   | 10 --------
+ pkgs/build-support/emacs/generic.nix          | 25 ++++++++++++++++---
+ pkgs/build-support/emacs/melpa.nix            |  4 +--
+ pkgs/top-level/emacs-packages.nix             |  2 +-
+ 6 files changed, 29 insertions(+), 20 deletions(-)
+ rename pkgs/build-support/emacs/{setup-hook.sh => emacs-funcs.sh} (75%)
+
+diff --git a/pkgs/applications/editors/emacs-modes/elpa-packages.nix b/pkgs/applications/editors/emacs-modes/elpa-packages.nix
+index 8b9ad33fce78a..98c265894eae8 100644
+--- a/pkgs/applications/editors/emacs-modes/elpa-packages.nix
++++ b/pkgs/applications/editors/emacs-modes/elpa-packages.nix
+@@ -20,7 +20,7 @@ instantenous and formats commits for you.
+ 
+ */
+ 
+-{ lib, stdenv, texinfo }:
++{ lib, stdenv, texinfo, writeText }:
+ 
+ self: let
+ 
+@@ -31,7 +31,7 @@ self: let
+   };
+ 
+   elpaBuild = import ../../../build-support/emacs/elpa.nix {
+-    inherit lib stdenv texinfo;
++    inherit lib stdenv texinfo writeText;
+     inherit (self) emacs;
+   };
+ 
+diff --git a/pkgs/build-support/emacs/elpa.nix b/pkgs/build-support/emacs/elpa.nix
+index 214aed9c3f9c2..41a0670d0c847 100644
+--- a/pkgs/build-support/emacs/elpa.nix
++++ b/pkgs/build-support/emacs/elpa.nix
+@@ -1,6 +1,6 @@
+ # builder for Emacs packages built for packages.el
+ 
+-{ lib, stdenv, emacs, texinfo }:
++{ lib, stdenv, emacs, texinfo, writeText }:
+ 
+ with lib;
+ 
+@@ -19,7 +19,7 @@ let
+ 
+ in
+ 
+-import ./generic.nix { inherit lib stdenv emacs texinfo; } ({
++import ./generic.nix { inherit lib stdenv emacs texinfo writeText; } ({
+ 
+   phases = "installPhase fixupPhase distPhase";
+ 
+diff --git a/pkgs/build-support/emacs/setup-hook.sh b/pkgs/build-support/emacs/emacs-funcs.sh
+similarity index 75%
+rename from pkgs/build-support/emacs/setup-hook.sh
+rename to pkgs/build-support/emacs/emacs-funcs.sh
+index f6f2331b8e023..e1e6a3b622087 100644
+--- a/pkgs/build-support/emacs/setup-hook.sh
++++ b/pkgs/build-support/emacs/emacs-funcs.sh
+@@ -32,13 +32,3 @@ addEmacsVars () {
+     fi
+   done
+ }
+-
+-if [[ ! -v emacsHookDone ]]; then
+-  emacsHookDone=1
+-
+-  # If this is for a wrapper derivation, emacs and the dependencies are all
+-  # run-time dependencies. If this is for precompiling packages into bytecode,
+-  # emacs is a compile-time dependency of the package.
+-  addEnvHooks "$hostOffset" addEmacsVars
+-  addEnvHooks "$targetOffset" addEmacsVars
+-fi
+diff --git a/pkgs/build-support/emacs/generic.nix b/pkgs/build-support/emacs/generic.nix
+index d84fa24923df7..1456d9e423d8f 100644
+--- a/pkgs/build-support/emacs/generic.nix
++++ b/pkgs/build-support/emacs/generic.nix
+@@ -1,6 +1,6 @@
+ # generic builder for Emacs packages
+ 
+-{ lib, stdenv, emacs, texinfo, ... }:
++{ lib, stdenv, emacs, texinfo, writeText, ... }:
+ 
+ with lib;
+ 
+@@ -49,7 +49,19 @@ stdenv.mkDerivation ({
+   propagatedBuildInputs = packageRequires;
+   propagatedUserEnvPkgs = packageRequires;
+ 
+-  setupHook = ./setup-hook.sh;
++  setupHook = writeText "setup-hook.sh" ''
++    source ${./emacs-funcs.sh}
++
++    if [[ ! -v emacsHookDone ]]; then
++      emacsHookDone=1
++
++      # If this is for a wrapper derivation, emacs and the dependencies are all
++      # run-time dependencies. If this is for precompiling packages into bytecode,
++      # emacs is a compile-time dependency of the package.
++      addEnvHooks "$hostOffset" addEmacsVars
++      addEnvHooks "$targetOffset" addEmacsVars
++    fi
++  '';
+ 
+   doCheck = false;
+ 
+@@ -63,9 +75,16 @@ stdenv.mkDerivation ({
+   addEmacsNativeLoadPath = true;
+ 
+   postInstall = ''
++    # Besides adding the output directory to the native load path, make sure
++    # the current package's elisp files are in the load path, otherwise
++    # (require 'file-b) from file-a.el in the same package will fail.
++    mkdir -p $out/share/emacs/native-lisp
++    source ${./emacs-funcs.sh}
++    addEmacsVars "$out"
++
+     find $out/share/emacs -type f -name '*.el' -print0 \
+       | xargs -0 -n 1 -I {} -P $NIX_BUILD_CORES sh -c \
+-          "emacs --batch --eval=\"(add-to-list 'comp-eln-load-path \\\"$out/share/emacs/native-lisp/\\\")\" -f batch-native-compile {} || true"
++          "emacs --batch -f batch-native-compile {} || true"
+   '';
+ }
+ 
+diff --git a/pkgs/build-support/emacs/melpa.nix b/pkgs/build-support/emacs/melpa.nix
+index d6fe3085837ee..824611b20c8a8 100644
+--- a/pkgs/build-support/emacs/melpa.nix
++++ b/pkgs/build-support/emacs/melpa.nix
+@@ -1,7 +1,7 @@
+ # builder for Emacs packages built for packages.el
+ # using MELPA package-build.el
+ 
+-{ lib, stdenv, fetchFromGitHub, emacs, texinfo }:
++{ lib, stdenv, fetchFromGitHub, emacs, texinfo, writeText }:
+ 
+ with lib;
+ 
+@@ -28,7 +28,7 @@ let
+ 
+ in
+ 
+-import ./generic.nix { inherit lib stdenv emacs texinfo; } ({
++import ./generic.nix { inherit lib stdenv emacs texinfo writeText; } ({
+ 
+   ename =
+     if ename == null
+diff --git a/pkgs/top-level/emacs-packages.nix b/pkgs/top-level/emacs-packages.nix
+index d0bb7c56d99cc..329fb57258294 100644
+--- a/pkgs/top-level/emacs-packages.nix
++++ b/pkgs/top-level/emacs-packages.nix
+@@ -45,7 +45,7 @@
+ let
+ 
+   mkElpaPackages = import ../applications/editors/emacs-modes/elpa-packages.nix {
+-    inherit lib stdenv texinfo;
++    inherit lib stdenv texinfo writeText;
+   };
+ 
+   # Contains both melpa stable & unstable

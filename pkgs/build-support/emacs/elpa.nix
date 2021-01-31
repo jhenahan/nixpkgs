@@ -10,6 +10,14 @@ with lib;
 , ...
 }@args:
 
+let
+
+  defaultMeta = {
+    homepage = args.src.meta.homepage or "https://elpa.gnu.org/packages/${pname}.html";
+  };
+
+in
+
 import ./generic.nix { inherit lib stdenv emacs texinfo; } ({
 
   phases = "installPhase fixupPhase distPhase";

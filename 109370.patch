@@ -1,0 +1,45 @@
+From 8386628de6039fa4778045d88d9e88a682a44f51 Mon Sep 17 00:00:00 2001
+From: Mauricio Collares <mauricio@collares.org>
+Date: Thu, 14 Jan 2021 12:00:09 -0300
+Subject: [PATCH] emacs: disable trampoline generation when installing packages
+
+---
+ pkgs/build-support/emacs/elpa.nix  | 4 +++-
+ pkgs/build-support/emacs/melpa.nix | 2 ++
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/pkgs/build-support/emacs/elpa.nix b/pkgs/build-support/emacs/elpa.nix
+index 214aed9c3f9c2..3876305ea654d 100644
+--- a/pkgs/build-support/emacs/elpa.nix
++++ b/pkgs/build-support/emacs/elpa.nix
+@@ -26,7 +26,9 @@ import ./generic.nix { inherit lib stdenv emacs texinfo; } ({
+   installPhase = ''
+     runHook preInstall
+ 
+-    emacs --batch -Q -l ${./elpa2nix.el} \
++    emacs --batch -Q \
++        --eval "(setq comp-enable-subr-trampolines nil)" \
++        -l ${./elpa2nix.el} \
+         -f elpa2nix-install-package \
+         "${src}" "$out/share/emacs/site-lisp/elpa"
+ 
+diff --git a/pkgs/build-support/emacs/melpa.nix b/pkgs/build-support/emacs/melpa.nix
+index d6fe3085837ee..bb0e66b77e7ee 100644
+--- a/pkgs/build-support/emacs/melpa.nix
++++ b/pkgs/build-support/emacs/melpa.nix
+@@ -67,6 +67,7 @@ import ./generic.nix { inherit lib stdenv emacs texinfo; } ({
+     cd "$NIX_BUILD_TOP"
+ 
+     emacs --batch -Q \
++        --eval "(setq comp-enable-subr-trampolines nil)" \
+         -L "$NIX_BUILD_TOP/package-build" \
+         -l "$melpa2nix" \
+         -f melpa2nix-build-package \
+@@ -84,6 +85,7 @@ import ./generic.nix { inherit lib stdenv emacs texinfo; } ({
+     fi
+ 
+     emacs --batch -Q \
++        --eval "(setq comp-enable-subr-trampolines nil)" \
+         -l "$elpa2nix" \
+         -f elpa2nix-install-package \
+         "$archive" "$out/share/emacs/site-lisp/elpa"
